@@ -174,7 +174,9 @@ class PetMenu(
         val blurCfg by cfg.flowBool("blur_enabled", false).collectAsState(initial = false)
         val blurOn = blurCfg && Build.VERSION.SDK_INT >= 31
         fun run(action: suspend () -> Unit) {
-            scope.launch { action(); }
+            // 关菜单会销毁 composition，rememberCoroutineScope 随之中止；
+            // 用主线程的独立作用域执行，动作才不会被取消。
+            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) { action() }
             onDismiss()
         }
 

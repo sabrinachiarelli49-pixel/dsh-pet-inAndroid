@@ -82,7 +82,9 @@ class QuickChat(private val ctx: Context) {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             // 可聚焦：直接输入
-            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            // 不设 NOT_TOUCH_MODAL 时，窗外触摸会被本窗口吃掉，导致无法操作其他应用
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START

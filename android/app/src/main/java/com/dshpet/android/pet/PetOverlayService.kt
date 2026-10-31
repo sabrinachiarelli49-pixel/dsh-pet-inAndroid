@@ -331,8 +331,9 @@ open class PetOverlayService : Service() {
         val (sx, sy) = screenPx()
         val savedX = st.x; val savedY = st.y
         // 默认右下角：以鱼身（内容区）为参照贴边（右 70%、底 92% 处）
-        val defaultX = (sx - engine.winW * 0.70 - 24).toInt()
-        val defaultY = (sy - engine.winH * 0.92 - 12).toInt()
+        // 默认出现在屏幕正中（原来的右下角偏移已移除）
+        val defaultX = ((sx - engine.winW) / 2)
+        val defaultY = ((sy - engine.winH) / 2)
         engine.setFacing(st.facing.ifEmpty { "left" })
         videoView.setMirror(engine.shouldMirror(engine.anim ?: ""))
         // 多开错位：新实例向右上偏移，避免与母体重叠
@@ -622,6 +623,11 @@ open class PetOverlayService : Service() {
         v.setOnTouchListener { _, ev ->
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    if (edgeHidden != 0) {
+                        restoreFromEdge()
+                        pressActive = false
+                        return@setOnTouchListener true
+                    }
                     pressActive = true
                     dragging = false
                     longPressFired = false
@@ -739,12 +745,14 @@ open class PetOverlayService : Service() {
                             if (hypot(vx, vy) < PetEngine.DEAD_ZONE_SPEED) {
                                 physMode = null
                                 savePosition()
+                                tryEdgeHide()
                             } else {
                                 physVel = doubleArrayOf(vx, vy)
                                 physMode = "throw"
                             }
                         } else {
                             savePosition()
+                            tryEdgeHide()
                         }
                     } else if (!longPressFired && !justDragged) {
                         onTap()
@@ -898,12 +906,8 @@ open class PetOverlayService : Service() {
                 lp.width = ww
                 lp.height = wh
                 runCatching { wm.updateViewLayout(c, lp) }
-                // 保持右下角锚点（以鱼身为参照）
-                val (sw, sh) = screenPx()
-                engine.setPosition(
-                    (sw - engine.winW * 0.70 - 24).toInt().coerceAtLeast(0),
-                    (sh - engine.winH * 0.92 - 12).toInt().coerceAtLeast(0),
-                )
+                // 改大小原地生效：保留当前坐标，不再跳回右下角
+                engine.setPosition(engine.winX, engine.winY)
                 syncEngineScreenBounds()
             }
         }
@@ -1109,6 +1113,56 @@ open class PetOverlayService : Service() {
         stopSelf()
     }
 
+    // ================================================================ 左右侧隐藏
+    /** 0=正常；1=贴左隐藏；2=贴右隐藏 */
+    private var edgeHidden = 0
+
+    /** 松手时若贴着左右边，收进屏幕外侧（留一条可点回来的边） */
+    private fun tryEdgeHide() {
+        if (curLock) return
+        val (sw, _) = screenPx()
+        val w = engine.winW
+        if (w <= 0 || sw <= 0) return
+        val margin = (24 * density).toInt()
+        val x = engine.winX
+        val side = when {
+            x <= margin -> 1
+            x + w >= sw - margin -> 2
+            else -> 0
+        }
+        if (side == 0) return
+        val targetX = if (side == 1) -(w * 0.72).toInt() else sw - (w * 0.28).toInt()
+        engine.cancelMove()
+        applyRawPosition(targetX, engine.winY)
+        edgeHidden = side
+        engine.noMove = true
+        savePosition()
+    }
+
+    /** 点一下隐藏的鱼身，回到屏幕内 */
+    private fun restoreFromEdge() {
+        if (edgeHidden == 0) return
+        val (sw, _) = screenPx()
+        applyRawPosition(if (edgeHidden == 1) 0 else (sw - engine.winW).coerceAtLeast(0), engine.winY)
+        edgeHidden = 0
+        engine.noMove = curNoMove
+        savePosition()
+    }
+
+    /** 直接落位：不走 moveWindow 的边界钳制（隐藏时需要允许负坐标） */
+    private fun applyRawPosition(x: Int, y: Int) {
+        val c = container ?: return
+        val lp = params ?: return
+        lp.x = x
+        lp.y = y
+        runCatching { wm.updateViewLayout(c, lp) }
+        engine.syncPosition(x, y)
+        collisionMember?.let {
+            it.x = x.toDouble(); it.y = y.toDouble()
+            it.w = engine.winW; it.h = engine.winH
+        }
+    }
+
     // ================================================================ 位置持久化
     private fun savePosition() {
         scope.launch {
@@ -1201,6 +1255,8 @@ open class PetOverlayService : Service() {
 
     /** 窗口水平可移动范围（含溢出） */
     private fun windowXRange(): IntRange {
+        // 贴边隐藏时允许把窗口推到屏幕外，否则动画循环会把它拽回来
+        if (edgeHidden != 0) return -100000..100000
         val (sw, _) = screenPx()
         val ov = overflowX()
         return -ov..maxOf(-ov, sw - engine.winW + ov)

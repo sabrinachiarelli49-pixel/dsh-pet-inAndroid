@@ -894,11 +894,18 @@ private fun QuickLaunchTab(ctx: android.content.Context, cfg: PetConfig, scope: 
     LaunchedEffect(Unit) { apps = cfg.quickLaunch() }
     val launchable = remember {
         val pm = ctx.packageManager
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        pm.queryIntentActivities(intent, 0)
-            .map { it.activityInfo.packageName to (it.loadLabel(pm).toString()) }
+        // 除系统应用外的全部已安装应用（需要清单里的 QUERY_ALL_PACKAGES 才能全部看到）
+        val self = ctx.packageName
+        pm.getInstalledApplications(0)
+            .asSequence()
+            .filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 }
+            .filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0 }
+            .filter { it.packageName != self }
+            .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
+            .map { it.packageName to (it.loadLabel(pm).toString()) }
             .distinctBy { it.first }
             .sortedBy { it.second }
+            .toList()
     }
 
     Column(Modifier.verticalScroll(rememberScrollState())) {
