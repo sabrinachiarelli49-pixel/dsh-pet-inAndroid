@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -60,6 +61,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
@@ -250,6 +252,11 @@ class PetMenu(
                     MenuGroup("互动")
                     MenuItem(Icons.Filled.Send, "AI 对话") { run { service.openChat() } }
                     MenuItem(Icons.Filled.Star, "欧鲸鲸（彩蛋）") { run { EasterEggPopup.showRandom(ctx) } }
+                    // ---- 工具 ----
+                    MenuGroup("工具")
+                    MenuItem(Icons.Filled.Star, "DeepSeek 余额") { run { service.showBalanceInBubble() } }
+                    MenuItem(Icons.Filled.Refresh, "检查更新") { run { service.checkUpdate() } }
+                    MenuItem(Icons.Filled.PlayArrow, "快捷启动") { quickOpen = true }
                     // ---- 播放 ----
                     MenuGroup("播放")
                     MenuItem(Icons.Filled.PlayArrow, "动画集", badge = "91 段") { animHubOpen = true }
@@ -271,11 +278,6 @@ class PetMenu(
                     }
                     MenuItem(Icons.Filled.Add, "生小肥鱼（多开）") { run { service.spawnPet() } }
                     MenuItem(Icons.Filled.Star, "灵动岛") { run { service.toggleIsland() } }
-                    // ---- 工具 ----
-                    MenuGroup("工具")
-                    MenuItem(Icons.Filled.Star, "DeepSeek 余额") { run { service.showBalanceInBubble() } }
-                    MenuItem(Icons.Filled.Refresh, "检查更新") { run { service.checkUpdate() } }
-                    MenuItem(Icons.Filled.PlayArrow, "快捷启动") { quickOpen = true }
                     // ---- 设置 ----
                     MenuGroup("设置")
                     MenuItem(Icons.Filled.Settings, "桌宠设置") { run { service.openSettings() } }
@@ -286,6 +288,30 @@ class PetMenu(
             }
         }
     }
+
+
+/** 快捷启动列表用的小应用图标 */
+@androidx.compose.runtime.Composable
+private fun QuickAppIcon(ctx: android.content.Context, pkg: String, sizeDp: androidx.compose.ui.unit.Dp = 22.dp) {
+    val bmp = androidx.compose.runtime.remember(pkg) {
+        runCatching {
+            val d = ctx.packageManager.getApplicationIcon(pkg)
+            val px = (sizeDp.value * ctx.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(b)
+            d.setBounds(0, 0, px, px)
+            d.draw(c)
+            asImageBitmap(b)
+        }.getOrNull()
+    }
+    if (bmp != null) {
+        androidx.compose.foundation.Image(
+            bitmap = bmp,
+            contentDescription = null,
+            modifier = androidx.compose.ui.Modifier.size(sizeDp),
+        )
+    }
+}
 
     @Composable
     private fun MenuGroup(title: String) {
@@ -450,6 +476,8 @@ class PetMenu(
                         .clickable { onPick(pkg) }
                         .padding(horizontal = 20.dp, vertical = 10.dp),
                 ) {
+                    QuickAppIcon(ctx, pkg, 18.dp)
+                    Spacer(Modifier.width(10.dp))
                     Text(label, fontSize = 13.sp, maxLines = 1)
                 }
             }
