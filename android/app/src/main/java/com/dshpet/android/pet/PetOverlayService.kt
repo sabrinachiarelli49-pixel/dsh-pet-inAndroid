@@ -1122,15 +1122,15 @@ open class PetOverlayService : Service() {
 
     /** 只有把桌宠拖到屏幕边缘松手，才收进屏幕外 */
     private fun tryEdgeHide() {
-        if (curLock) return
+        if (curLock || edgeHidden != 0) return
         val (sw, _) = screenPx()
         val w = engine.winW
         if (w <= 0 || sw <= 0) return
         val edge = 6
-        val x = engine.winX
+        val cx = engine.winX + w / 2
         val side = when {
-            x <= edge -> 1
-            x + w >= sw - edge -> 2
+            cx <= edge -> 1
+            cx >= sw - edge -> 2
             else -> 0
         }
         if (side == 0) return
@@ -1142,7 +1142,11 @@ open class PetOverlayService : Service() {
         // 面朝屏幕外，露出来的那一小块看起来就是探出的脑袋
         engine.setFacing(if (side == 2) "right" else "left")
         // 探头小动作：慢慢滑出去 + 播一段张望
-        slideTo(targetX)
+        // 滑出去 → 轻轻探回一点 → 停住
+        slideTo(targetX) {
+            val peekBack = if (side == 1) 10 else -10
+            slideTo(targetX + peekBack, 120) { slideTo(targetX, 120) }
+        }
         runCatching { engine.switch("东张西望") }
         reportEdge("收起")
         savePosition()
@@ -1170,14 +1174,15 @@ open class PetOverlayService : Service() {
         }, 400)
     }
 
-    /** 平滑滑到目标 x（约 220ms，ease-out） */
-    private fun slideTo(targetX: Int) {
+    /** 平滑滑到目标 x（ease-out） */
+    private fun slideTo(targetX: Int, durationMs: Int = 260, onDone: (() -> Unit)? = null) {
         val startX = engine.winX
         if (startX == targetX) {
             applyRawPosition(targetX, engine.winY)
+            onDone?.invoke()
             return
         }
-        val steps = 14
+        val steps = (durationMs / 16).coerceAtLeast(2)
         scope.launch(Dispatchers.Main) {
             for (i in 1..steps) {
                 val t = i.toFloat() / steps
@@ -1186,6 +1191,7 @@ open class PetOverlayService : Service() {
                 kotlinx.coroutines.delay(16L)
             }
             applyRawPosition(targetX, engine.winY)
+            onDone?.invoke()
         }
     }
 
@@ -1297,6 +1303,9 @@ open class PetOverlayService : Service() {
     private fun windowXRange(): IntRange {
         // 贴边隐藏时允许把窗口推到屏幕外，否则动画循环会把它拽回来
         if (edgeHidden != 0) return -100000..100000
+        val (swDrag, _) = screenPx()
+        // 拖动中允许把整只鱼拖出屏幕，才能拖到“一半进入边缘”
+        if (dragging) return -engine.winW..swDrag
         val (sw, _) = screenPx()
         val ov = overflowX()
         return -ov..maxOf(-ov, sw - engine.winW + ov)
