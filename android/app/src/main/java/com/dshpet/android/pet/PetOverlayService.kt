@@ -264,6 +264,7 @@ open class PetOverlayService : Service() {
             "onDestroy instance=$instanceId（用户退出/服务被杀/初始化失败均会到这）"
         )
         synchronized(activeInstances) { activeInstances.remove(instanceId) }
+        hideTail()
         scope.cancel()
         uiHandler.removeCallbacksAndMessages(null)
         settingsJobs.forEach { it.cancel() }
@@ -1133,8 +1134,7 @@ open class PetOverlayService : Service() {
             else -> 0
         }
         if (side == 0) return
-        val visible = (w * edgePeekRatio).toInt().coerceAtLeast(36).coerceAtMost(w)
-        val targetX = if (side == 1) -(w - visible) else sw - visible
+        val targetX = if (side == 1) -w else sw
         engine.cancelMove()
         edgeHidden = side
         // 静默：不自动换动作、不移动
@@ -1142,10 +1142,11 @@ open class PetOverlayService : Service() {
         engine.noMove = true
         engine.setFacing(if (side == 2) "right" else "left")
         applyRawPosition(targetX, engine.winY)
+        showTail(side)
         savePosition()
     }
 
-    /** 点一下露出的部分，回到屏幕内 */
+    /** 点一下尾巴（或屏幕边缘），回到屏幕内 */
     private fun restoreFromEdge() {
         if (edgeHidden == 0) return
         val (sw, _) = screenPx()
@@ -1153,8 +1154,41 @@ open class PetOverlayService : Service() {
         edgeHidden = 0
         engine.silent = false
         engine.noMove = curNoMove
+        hideTail()
         applyRawPosition(target, engine.winY)
         savePosition()
+    }
+
+    /** 隐藏后贴在屏幕边缘的“鲸鱼小尾巴”标识（点它复原） */
+    private var tailView: android.widget.ImageView? = null
+
+    private fun showTail(side: Int) {
+        hideTail()
+        val v = android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.whale_cutout)
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            alpha = 0.92f
+            setOnClickListener { restoreFromEdge() }
+        }
+        val size = (56 * density).toInt().coerceAtLeast(24)
+        val (sw, sh) = screenPx()
+        val lp = WindowManager.LayoutParams(
+            size, size,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = if (side == 1) 0 else (sw - size)
+            y = (engine.winY + engine.winH / 2).coerceIn(0, (sh - size).coerceAtLeast(0))
+        }
+        if (runCatching { wm.addView(v, lp) }.isSuccess) tailView = v
+    }
+
+    private fun hideTail() {
+        tailView?.let { runCatching { wm.removeView(it) } }
+        tailView = null
     }
 
     /** 直接落位：不走 moveWindow 的边界钳制（隐藏时需要允许负坐标） */
@@ -1178,6 +1212,7 @@ open class PetOverlayService : Service() {
             edgeHidden = 0
             engine.silent = false
             engine.noMove = curNoMove
+            hideTail()
         }
         val (sw, sh) = screenPx()
         val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
