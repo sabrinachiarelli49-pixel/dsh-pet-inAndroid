@@ -1212,14 +1212,14 @@ open class PetOverlayService : Service() {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
-            x = if (side == 1) -(targetW * 0.34f).toInt() else sw - (targetW * 0.66f).toInt()
+            x = if (side == 1) 0 else (sw - targetW).coerceAtLeast(0)
             y = (engine.winY + engine.winH / 2 - targetH / 2)
                 .coerceIn(0, (sh - targetH).coerceAtLeast(0))
         }
 
         // 拖动不越出屏幕（保留和隐藏时同样的露出比例）
         val minX = -(targetW * 0.34f).toInt()
-        val maxX = sw - (targetW * 0.66f).toInt()
+        val maxX = (sw - targetW).coerceAtLeast(minX)
         val minY = 0
         val maxY = (sh - targetH).coerceAtLeast(0)
 
@@ -1259,7 +1259,20 @@ open class PetOverlayService : Service() {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     uiHandler.removeCallbacks(longPress)
-                    if (!moved) restoreFromEdge()
+                    if (!moved) {
+                        restoreFromEdge()
+                    } else {
+                        // 拖离边缘一定距离后，直接退出隐藏状态
+                        val gap = 80
+                        val farFromEdge = lp.x > gap && lp.x < (sw - targetW - gap)
+                        if (farFromEdge) {
+                            val px = lp.x.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
+                            val py = lp.y.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
+                            restoreFromEdge()
+                            applyRawPosition(px, py)
+                            savePosition()
+                        }
+                    }
                     true
                 }
                 else -> true
