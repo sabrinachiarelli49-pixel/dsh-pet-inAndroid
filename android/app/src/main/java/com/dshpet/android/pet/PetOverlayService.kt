@@ -1214,7 +1214,7 @@ open class PetOverlayService : Service() {
             // 让身体被屏幕边缘切掉一点，看起来是躲在屏幕外面探头
             // 约三分之一藏在屏幕外，看起来像从边缘探出半个身子
             // 贴在真正的屏幕边界上（与系统侧边栏同一条线）
-            x = if (side == 1) -(targetW * 0.86f).toInt() else sw - (targetW * 0.14f).toInt()
+            x = if (side == 1) -(targetW * 0.62f).toInt() else sw - (targetW * 0.38f).toInt()
             y = (engine.winY + engine.winH / 2 - targetH / 2)
                 .coerceIn(0, (sh - targetH).coerceAtLeast(0))
         }
