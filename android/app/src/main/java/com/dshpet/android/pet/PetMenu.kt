@@ -61,7 +61,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
@@ -293,24 +292,17 @@ class PetMenu(
 /** 快捷启动列表用的小应用图标 */
 @androidx.compose.runtime.Composable
 private fun QuickAppIcon(ctx: android.content.Context, pkg: String, sizeDp: androidx.compose.ui.unit.Dp = 22.dp) {
-    val bmp = androidx.compose.runtime.remember(pkg) {
-        runCatching {
-            val d = ctx.packageManager.getApplicationIcon(pkg)
-            val px = (sizeDp.value * ctx.resources.displayMetrics.density).toInt().coerceAtLeast(1)
-            val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
-            val c = android.graphics.Canvas(b)
-            d.setBounds(0, 0, px, px)
-            d.draw(c)
-            asImageBitmap(b)
-        }.getOrNull()
-    }
-    if (bmp != null) {
-        androidx.compose.foundation.Image(
-            bitmap = bmp,
-            contentDescription = null,
-            modifier = androidx.compose.ui.Modifier.size(sizeDp),
-        )
-    }
+    androidx.compose.ui.viewinterop.AndroidView(
+        modifier = androidx.compose.ui.Modifier.size(sizeDp),
+        factory = { c ->
+            android.widget.ImageView(c).apply {
+                scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            }
+        },
+        update = { iv ->
+            runCatching { iv.setImageDrawable(ctx.packageManager.getApplicationIcon(pkg)) }
+        },
+    )
 }
 
     @Composable
