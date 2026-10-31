@@ -62,7 +62,7 @@ import com.dshpet.android.util.attachComposeHost
  * - 回车发送；点击 ✕ 或窗口失焦超时关闭；
  * - 长回复滚动显示。
  */
-class QuickChat(private val ctx: Context) {
+class QuickChat(private val ctx: Context, private val onReply: ((String) -> Unit)? = null) {
 
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var view: View? = null
@@ -135,6 +135,18 @@ class QuickChat(private val ctx: Context) {
         val streamText by vm.streamText.collectAsState()
         val messages = remember(current, streamText) { vm.displayedMessages() }
         var input by remember { mutableStateOf("") }
+        // 回复完成后用头顶气泡说一句（和查余额同款），完整对话仍在对话窗历史里
+        var lastBubbled by remember { mutableStateOf<String?>(null) }
+        androidx.compose.runtime.LaunchedEffect(streaming, messages) {
+            if (!streaming) {
+                val last = messages.lastOrNull { it.role == "assistant" }
+                val text = last?.content?.trim().orEmpty()
+                if (text.isNotEmpty() && text != lastBubbled) {
+                    lastBubbled = text
+                    onReply?.invoke(text)
+                }
+            }
+        }
 
         Surface(
             shape = RoundedCornerShape(18.dp),

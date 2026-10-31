@@ -494,7 +494,7 @@ open class PetOverlayService : Service() {
         if (quickChat?.isShowing() == true) {
             quickChat?.dismiss()
         } else {
-            if (quickChat == null) quickChat = QuickChat(this)
+            if (quickChat == null) quickChat = QuickChat(this) { text -> showBubble(text, 9000) }
             quickChat?.show(engine.winX + engine.winW / 2, engine.winY)
         }
     }
