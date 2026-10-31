@@ -1159,29 +1159,35 @@ open class PetOverlayService : Service() {
         savePosition()
     }
 
-    /** 隐藏后贴在屏幕边缘的“鲸鱼小尾巴”标识（点它复原） */
+    /** 隐藏后贴在屏幕边缘的「探头」形象（点它复原） */
     private var tailView: android.widget.ImageView? = null
 
     private fun showTail(side: Int) {
         hideTail()
         val v = android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_launcher_foreground)
+            setImageResource(R.drawable.peek_whale)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            alpha = 0.92f
+            if (side == 2) scaleX = -1f
             setOnClickListener { restoreFromEdge() }
         }
-        val size = (56 * density).toInt().coerceAtLeast(24)
+        val targetH = (260 * density).toInt().coerceAtLeast(120)
+        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeResource(resources, R.drawable.peek_whale, opts)
+        val ratio = if (opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight else 0.5f
+        val targetW = (targetH * ratio).toInt().coerceAtLeast(60)
         val (sw, sh) = screenPx()
         val lp = WindowManager.LayoutParams(
-            size, size,
+            targetW, targetH,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = if (side == 1) 0 else (sw - size)
-            y = (engine.winY + engine.winH / 2).coerceIn(0, (sh - size).coerceAtLeast(0))
+            // 让身体被屏幕边缘切掉一点，看起来是躲在屏幕外面探头
+            x = if (side == 1) -(targetW * 0.10f).toInt() else sw - (targetW * 0.90f).toInt()
+            y = (engine.winY + engine.winH / 2 - targetH / 2)
+                .coerceIn(0, (sh - targetH).coerceAtLeast(0))
         }
         if (runCatching { wm.addView(v, lp) }.isSuccess) tailView = v
     }
