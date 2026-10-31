@@ -78,6 +78,10 @@ class PetChatWindow(private val ctx: Context) {
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var view: ComposeView? = null
     private var lp: WindowManager.LayoutParams? = null
+    private var startW = 0
+    private var startH = 0
+    private var startRawX = 0f
+    private var startRawY = 0f
     private val vm: ChatViewModel = ChatViewModel(ctx.applicationContext as Application)
     private val config = PetConfig.get(ctx)
 
@@ -107,14 +111,53 @@ class PetChatWindow(private val ctx: Context) {
             y = (sh * 0.16f).toInt()
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
-        view = composeView
+        // 右下角加一个可拖拽的缩放手柄，让对话窗能自由变大变小
+        val handleSize = (26 * ctx.resources.displayMetrics.density).toInt().coerceAtLeast(18)
+        val handle = View(ctx).apply {
+            setBackgroundColor(0x33FFFFFF)
+        }
+        val root = android.widget.FrameLayout(ctx)
+        root.addView(composeView, android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        root.addView(handle, android.widget.FrameLayout.LayoutParams(
+            handleSize, handleSize, Gravity.BOTTOM or Gravity.END,
+        ))
+        handle.setOnTouchListener { _, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    startW = params.width
+                    startH = params.height
+                    startRawX = ev.rawX
+                    startRawY = ev.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val minW = (260 * ctx.resources.displayMetrics.density).toInt()
+                    val minH = (240 * ctx.resources.displayMetrics.density).toInt()
+                    val nw = (startW + (ev.rawX - startRawX)).toInt()
+                        .coerceIn(minW, (sw - params.x).coerceAtLeast(minW))
+                    val nh = (startH + (ev.rawY - startRawY)).toInt()
+                        .coerceIn(minH, (sh - params.y).coerceAtLeast(minH))
+                    if (nw != params.width || nh != params.height) {
+                        params.width = nw
+                        params.height = nh
+                        runCatching { wm.updateViewLayout(root, params) }
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+        view = root
         lp = params
         // 外部点击不关闭（输入中误触代价高），由标题栏关闭
         composeView.setOnTouchListener { _, ev ->
             if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) true else false
         }
         try {
-            wm.addView(composeView, params)
+            wm.addView(root, params)
         } catch (e: Exception) {
             AppLog.log("CHAT", "悬浮对话窗口创建失败: ${e.message}")
             view = null
