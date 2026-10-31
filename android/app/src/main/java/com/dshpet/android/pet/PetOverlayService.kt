@@ -147,6 +147,10 @@ open class PetOverlayService : Service() {
     /** 最近一次设定的窗口像素尺寸（转屏后按它还原，保证横竖屏一样大） */
     private var lastWinW = 0
     private var lastWinH = 0
+    /** 尺寸锁定：布局每次变化都回写成这个值 */
+    private var lockW = 0
+    private var lockH = 0
+    private var pinning = false
     private var curOpacity = 100
     internal var curSpeed = PetConfig.DEFAULT_PLAYBACK_SPEED
     private var curNoMove = false
@@ -606,6 +610,14 @@ open class PetOverlayService : Service() {
         })
         container = root
         wm.addView(root, lp)
+        // App 在横屏会把窗口重新算成「屏幕宽 × 42%」，这里监听布局变化并强制回写
+        root.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
+            val lw = lockW
+            val lh = lockH
+            if (lw > 0 && lh > 0 && (r - l != lw || b - t != lh)) {
+                uiHandler.post { applyPetSize(lw, lh) }
+            }
+        }
     }
 
     // ================================================================ 动画播放
@@ -1211,15 +1223,18 @@ open class PetOverlayService : Service() {
 
     /** 把窗口尺寸钉成指定像素，并立即重排 */
     private fun applyPetSize(w: Int, h: Int) {
-        if (w <= 0 || h <= 0) return
-        if (engine.winW == w && engine.winH == h) return
+        if (w <= 0 || h <= 0 || pinning) return
+        pinning = true
         engine.setWindowSize(w, h)
         params?.let { lp ->
-            lp.width = w
-            lp.height = h
-            container?.let { c -> runCatching { wm.updateViewLayout(c, lp) } }
+            if (lp.width != w || lp.height != h) {
+                lp.width = w
+                lp.height = h
+                container?.let { c -> runCatching { wm.updateViewLayout(c, lp) } }
+            }
         }
         syncEngineScreenBounds()
+        uiHandler.post { pinning = false }
     }
 
     /** 直接落位：不走 moveWindow 的边界钳制（隐藏时需要允许负坐标） */
@@ -1256,6 +1271,8 @@ open class PetOverlayService : Service() {
             val h = (w * 9.0 / 16.0).toInt().coerceAtLeast(64)
             lastWinW = w
             lastWinH = h
+            lockW = w
+            lockH = h
             applyPetSize(w, h)
             val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
             val y = engine.winY.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
