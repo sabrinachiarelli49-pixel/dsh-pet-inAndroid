@@ -1127,7 +1127,7 @@ open class PetOverlayService : Service() {
         val (sw, _) = screenPx()
         val w = engine.winW
         if (w <= 0 || sw <= 0) return
-        val out = w / 3
+        val out = minOf(w / 3, sw / 4)
         val side = when {
             engine.winX <= -out -> 1
             engine.winX + w >= sw + out -> 2
@@ -1171,7 +1171,8 @@ open class PetOverlayService : Service() {
             setOnClickListener { restoreFromEdge() }
         }
         // 尺寸跟随桌宠当前大小（窗口高度的 1.05 倍）
-        val targetH = (engine.winH * 0.85f).toInt().coerceAtLeast(96)
+        val (swNow, shNow) = screenPx()
+        val targetH = minOf((engine.winH * 0.85f).toInt(), (shNow * 0.45f).toInt()).coerceAtLeast(96)
         val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
         android.graphics.BitmapFactory.decodeResource(resources, R.drawable.peek_whale, opts)
         val ratio = if (opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight else 0.5f
@@ -1223,6 +1224,18 @@ open class PetOverlayService : Service() {
             hideTail()
         }
         val (sw, sh) = screenPx()
+        // 横屏时窗口按 dp 算会超出屏幕，先按可用高度收一收
+        val maxH = (sh * 0.42f).toInt()
+        if (maxH > 0 && engine.winH > maxH) {
+            val k = maxH.toFloat() / engine.winH
+            val nw = (engine.winW * k).toInt().coerceAtLeast(64)
+            engine.setWindowSize(nw, maxH)
+            params?.let { lp ->
+                lp.width = nw
+                lp.height = maxH
+                container?.let { c -> runCatching { wm.updateViewLayout(c, lp) } }
+            }
+        }
         val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
         val y = engine.winY.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
         applyRawPosition(x, y)
