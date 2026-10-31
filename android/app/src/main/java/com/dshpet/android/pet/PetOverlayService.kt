@@ -1118,19 +1118,20 @@ open class PetOverlayService : Service() {
     /** 0=正常；1=贴左隐藏；2=贴右隐藏 */
     private var edgeHidden = 0
     /** 隐藏时露在外面的比例（只露脑袋） */
-    private val edgePeekRatio = 0.18f
+    private val edgePeekRatio = 0.26f
+    /** 探头循环 */
+    private var peekJob: Job? = null
 
-    /** 只有把桌宠拖到屏幕边缘松手，才收进屏幕外 */
+    /** 拖到「三分之一进入屏幕边」松手才隐藏 */
     private fun tryEdgeHide() {
         if (curLock || edgeHidden != 0) return
         val (sw, _) = screenPx()
         val w = engine.winW
         if (w <= 0 || sw <= 0) return
-        val edge = 6
-        val cx = engine.winX + w / 2
+        val out = w / 3
         val side = when {
-            cx <= edge -> 1
-            cx >= sw - edge -> 2
+            engine.winX <= -out -> 1
+            engine.winX + w >= sw + out -> 2
             else -> 0
         }
         if (side == 0) return
@@ -1139,39 +1140,52 @@ open class PetOverlayService : Service() {
         engine.cancelMove()
         edgeHidden = side
         engine.noMove = true
-        // 面朝屏幕外，露出来的那一小块看起来就是探出的脑袋
+        // 面朝屏幕外，露出来的那块就是探出的脑袋
         engine.setFacing(if (side == 2) "right" else "left")
-        // 探头小动作：慢慢滑出去 + 播一段张望
-        // 滑出去 → 轻轻探回一点 → 停住
         slideTo(targetX) {
-            val peekBack = if (side == 1) 10 else -10
-            slideTo(targetX + peekBack, 120) { slideTo(targetX, 120) }
+            runCatching { engine.switch("东张西望") }
+            startPeekLoop(targetX)
         }
-        runCatching { engine.switch("东张西望") }
-        reportEdge("收起")
         savePosition()
     }
 
     /** 点一下露出的脑袋，滑回屏幕内 */
     private fun restoreFromEdge() {
         if (edgeHidden == 0) return
+        peekJob?.cancel()
+        peekJob = null
         val (sw, _) = screenPx()
         val target = if (edgeHidden == 1) 0 else (sw - engine.winW).coerceAtLeast(0)
-        edgeHidden = 0
         engine.noMove = curNoMove
+        edgeHidden = 0
         slideTo(target)
-        reportEdge("恢复")
         savePosition()
     }
 
-    /** 收起/恢复后冒泡报一下真实窗口坐标（排查用） */
-    private fun reportEdge(action: String) {
-        uiHandler.postDelayed({
-            val loc = IntArray(2)
-            runCatching { container?.getLocationOnScreen(loc) }
-            val w = engine.winW
-            showBubble("$action 实际x=${loc[0]} 宽=$w", 2500)
-        }, 400)
+    /** 隐藏后每隔 2.2 秒探头一次（探出 26px 再缩回去） */
+    private fun startPeekLoop(baseX: Int) {
+        peekJob?.cancel()
+        peekJob = scope.launch(Dispatchers.Main) {
+            while (edgeHidden != 0) {
+                kotlinx.coroutines.delay(2200L)
+                if (edgeHidden == 0) break
+                val dir = if (edgeHidden == 1) 1 else -1
+                animateX(baseX, baseX + dir * 26, 200)
+                animateX(baseX + dir * 26, baseX, 200)
+            }
+        }
+    }
+
+    private suspend fun animateX(from: Int, to: Int, durationMs: Int) {
+        val steps = (durationMs / 16).coerceAtLeast(2)
+        for (i in 1..steps) {
+            if (edgeHidden == 0) return
+            val t = i.toFloat() / steps
+            val eased = 1f - (1f - t) * (1f - t)
+            applyRawPosition((from + (to - from) * eased).toInt(), engine.winY)
+            kotlinx.coroutines.delay(16L)
+        }
+        if (edgeHidden != 0) applyRawPosition(to, engine.winY)
     }
 
     /** 平滑滑到目标 x（ease-out） */
