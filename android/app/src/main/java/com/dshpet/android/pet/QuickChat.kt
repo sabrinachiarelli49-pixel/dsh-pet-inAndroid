@@ -8,6 +8,8 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -109,6 +111,24 @@ class QuickChat(private val ctx: Context, private val onReply: ((String) -> Unit
         }
     }
 
+    private val scope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main
+    )
+
+    /** 输入完立刻收起输入窗，回复结束后用小肥鱼气泡呈现 */
+    fun sendAndClose(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        vm.send(trimmed)
+        view?.let { runCatching { wm.removeView(it) } }
+        view = null
+        scope.launch {
+            runCatching { vm.streaming.first { !it } }
+            val reply = vm.displayedMessages().lastOrNull { it.role == "assistant" }?.content?.trim().orEmpty()
+            if (reply.isNotEmpty()) onReply?.invoke(reply)
+        }
+    }
+
     fun dismiss() {
         view?.let { runCatching { wm.removeView(it) } }
         view = null
@@ -135,19 +155,6 @@ class QuickChat(private val ctx: Context, private val onReply: ((String) -> Unit
         val streamText by vm.streamText.collectAsState()
         val messages = remember(current, streamText) { vm.displayedMessages() }
         var input by remember { mutableStateOf("") }
-        // 回复完成后用头顶气泡说一句（和查余额同款），完整对话仍在对话窗历史里
-        var lastBubbled by remember { mutableStateOf<String?>(null) }
-        androidx.compose.runtime.LaunchedEffect(streaming, messages) {
-            if (!streaming) {
-                val last = messages.lastOrNull { it.role == "assistant" }
-                val text = last?.content?.trim().orEmpty()
-                if (text.isNotEmpty() && text != lastBubbled) {
-                    lastBubbled = text
-                    onReply?.invoke(text)
-                }
-            }
-        }
-
         Surface(
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -206,7 +213,7 @@ class QuickChat(private val ctx: Context, private val onReply: ((String) -> Unit
                     IconButton(
                         onClick = {
                             if (input.isNotBlank()) {
-                                vm.send(input)
+                                sendAndClose(input)
                                 input = ""
                             }
                         },

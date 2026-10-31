@@ -1006,7 +1006,18 @@ open class PetOverlayService : Service() {
 
 
     fun showBubble(text: String, durationMs: Long = 6000) {
-        uiHandler.post { bubble?.showText(text, durationMs) }
+        uiHandler.post {
+            if (edgeHidden != 0 && tailLp != null) {
+                // 隐藏时气泡锚到探头位置，而不是屏幕外的鱼身
+                val oldX = engine.winX
+                val oldY = engine.winY
+                engine.syncPosition(tailLp!!.x.coerceAtLeast(0), tailLp!!.y)
+                bubble?.showText(text, durationMs)
+                engine.syncPosition(oldX, oldY)
+            } else {
+                bubble?.showText(text, durationMs)
+            }
+        }
     }
 
     // ================================================================ 菜单
@@ -1183,6 +1194,7 @@ open class PetOverlayService : Service() {
 
     /** 隐藏后贴在屏幕边缘的「探头」形象（点它复原） */
     private var tailView: android.widget.ImageView? = null
+    private var tailLp: WindowManager.LayoutParams? = null
 
     private fun showTail(side: Int) {
         hideTail()
@@ -1260,7 +1272,7 @@ open class PetOverlayService : Service() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     uiHandler.removeCallbacks(longPress)
                     if (!moved) {
-                        restoreFromEdge()
+                        // 隐藏状态下点击不再退出，只有拖离边缘才退出
                     } else {
                         val edgeGap = 8
                         val atLeft = lp.x <= edgeGap
@@ -1285,12 +1297,16 @@ open class PetOverlayService : Service() {
                 else -> true
             }
         }
-        if (runCatching { wm.addView(v, lp) }.isSuccess) tailView = v
+        if (runCatching { wm.addView(v, lp) }.isSuccess) {
+            tailView = v
+            tailLp = lp
+        }
     }
 
     private fun hideTail() {
         tailView?.let { runCatching { wm.removeView(it) } }
         tailView = null
+        tailLp = null
     }
 
     /** 按当前大小设置重新计算锁定尺寸（横竖屏都按屏幕短边算） */
