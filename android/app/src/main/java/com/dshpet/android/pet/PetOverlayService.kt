@@ -1116,37 +1116,64 @@ open class PetOverlayService : Service() {
     // ================================================================ 左右侧隐藏
     /** 0=正常；1=贴左隐藏；2=贴右隐藏 */
     private var edgeHidden = 0
+    /** 隐藏时露在外面的比例（只露脑袋） */
+    private val edgePeekRatio = 0.18f
 
-    /** 松手时若贴着左右边，收进屏幕外侧（留一条可点回来的边） */
+    /** 只有把桌宠拖到屏幕边缘松手，才收进屏幕外 */
     private fun tryEdgeHide() {
         if (curLock) return
         val (sw, _) = screenPx()
         val w = engine.winW
         if (w <= 0 || sw <= 0) return
-        val margin = (24 * density).toInt()
+        val edge = 6
         val x = engine.winX
         val side = when {
-            x <= margin -> 1
-            x + w >= sw - margin -> 2
+            x <= edge -> 1
+            x + w >= sw - edge -> 2
             else -> 0
         }
         if (side == 0) return
-        val targetX = if (side == 1) -(w * 0.72).toInt() else sw - (w * 0.28).toInt()
+        val visible = (w * edgePeekRatio).toInt().coerceAtLeast(36)
+        val targetX = if (side == 1) -(w - visible) else sw - visible
         engine.cancelMove()
-        applyRawPosition(targetX, engine.winY)
         edgeHidden = side
         engine.noMove = true
+        // 面朝屏幕外，露出来的那一小块看起来就是探出的脑袋
+        engine.setFacing(if (side == 2) "right" else "left")
+        // 探头小动作：慢慢滑出去 + 播一段张望
+        slideTo(targetX)
+        runCatching { engine.switch("东张西望") }
         savePosition()
     }
 
-    /** 点一下隐藏的鱼身，回到屏幕内 */
+    /** 点一下露出的脑袋，滑回屏幕内 */
     private fun restoreFromEdge() {
         if (edgeHidden == 0) return
         val (sw, _) = screenPx()
-        applyRawPosition(if (edgeHidden == 1) 0 else (sw - engine.winW).coerceAtLeast(0), engine.winY)
+        val target = if (edgeHidden == 1) 0 else (sw - engine.winW).coerceAtLeast(0)
         edgeHidden = 0
         engine.noMove = curNoMove
+        slideTo(target)
         savePosition()
+    }
+
+    /** 平滑滑到目标 x（约 220ms，ease-out） */
+    private fun slideTo(targetX: Int) {
+        val startX = engine.winX
+        if (startX == targetX) {
+            applyRawPosition(targetX, engine.winY)
+            return
+        }
+        val steps = 14
+        scope.launch(Dispatchers.Main) {
+            for (i in 1..steps) {
+                val t = i.toFloat() / steps
+                val eased = 1f - (1f - t) * (1f - t)
+                applyRawPosition((startX + (targetX - startX) * eased).toInt(), engine.winY)
+                kotlinx.coroutines.delay(16L)
+            }
+            applyRawPosition(targetX, engine.winY)
+        }
     }
 
     /** 直接落位：不走 moveWindow 的边界钳制（隐藏时需要允许负坐标） */
