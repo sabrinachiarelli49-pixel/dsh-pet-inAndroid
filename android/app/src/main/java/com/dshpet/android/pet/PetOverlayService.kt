@@ -1155,8 +1155,10 @@ open class PetOverlayService : Service() {
         val targetX = if (side == 1) -w else sw
         engine.cancelMove()
         edgeHidden = side
-        // 静默：不自动换动作、不移动
-        engine.silent = true
+        // 只停播动画，不再进入静默模式
+        visible = false
+        container?.visibility = android.view.View.GONE
+        if (::videoView.isInitialized) runCatching { videoView.pausePlay() }
         engine.noMove = true
         engine.setFacing(if (side == 2) "right" else "left")
         applyRawPosition(targetX, engine.winY)
@@ -1170,7 +1172,9 @@ open class PetOverlayService : Service() {
         val (sw, _) = screenPx()
         val target = if (edgeHidden == 1) 0 else (sw - engine.winW).coerceAtLeast(0)
         edgeHidden = 0
-        engine.silent = false
+        visible = true
+        container?.visibility = android.view.View.VISIBLE
+        if (::videoView.isInitialized) runCatching { videoView.resumePlay() }
         engine.noMove = curNoMove
         hideTail()
         applyRawPosition(target, engine.winY)
@@ -1186,9 +1190,7 @@ open class PetOverlayService : Service() {
             setImageResource(R.drawable.peek_whale)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             if (side == 1) scaleX = -1f
-            setOnClickListener { restoreFromEdge() }
         }
-        // 尺寸跟随桌宠当前大小（窗口高度的 1.05 倍）
         val (swNow, shNow) = screenPx()
         val targetH = minOf((engine.winH * 0.85f).toInt(), (shNow * 0.45f).toInt()).coerceAtLeast(96)
         val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -1206,17 +1208,62 @@ open class PetOverlayService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // 允许画进状态栏/挖孔区域，否则系统会把探头往右推
             if (Build.VERSION.SDK_INT >= 28) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
-            // 让身体被屏幕边缘切掉一点，看起来是躲在屏幕外面探头
-            // 约三分之一藏在屏幕外，看起来像从边缘探出半个身子
-            // 贴在真正的屏幕边界上（与系统侧边栏同一条线）
             x = if (side == 1) -(targetW * 0.34f).toInt() else sw - (targetW * 0.66f).toInt()
             y = (engine.winY + engine.winH / 2 - targetH / 2)
                 .coerceIn(0, (sh - targetH).coerceAtLeast(0))
+        }
+
+        // 拖动不越出屏幕（保留和隐藏时同样的露出比例）
+        val minX = -(targetW * 0.34f).toInt()
+        val maxX = sw - (targetW * 0.66f).toInt()
+        val minY = 0
+        val maxY = (sh - targetH).coerceAtLeast(0)
+
+        var downRawX = 0f
+        var downRawY = 0f
+        var startX = 0
+        var startY = 0
+        var moved = false
+        val longPress = Runnable {
+            if (!moved) {
+                engine.syncPosition(lp.x.coerceAtLeast(0), lp.y)
+                openMenu()
+            }
+        }
+        v.setOnTouchListener { _, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = ev.rawX; downRawY = ev.rawY
+                    startX = lp.x; startY = lp.y
+                    moved = false
+                    uiHandler.postDelayed(longPress, 450)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (ev.rawX - downRawX).toInt()
+                    val dy = (ev.rawY - downRawY).toInt()
+                    if (!moved && (kotlin.math.abs(dx) > 12 || kotlin.math.abs(dy) > 12)) {
+                        moved = true
+                        uiHandler.removeCallbacks(longPress)
+                    }
+                    if (moved) {
+                        lp.x = (startX + dx).coerceIn(minX, maxX)
+                        lp.y = (startY + dy).coerceIn(minY, maxY)
+                        runCatching { wm.updateViewLayout(v, lp) }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    uiHandler.removeCallbacks(longPress)
+                    if (!moved) restoreFromEdge()
+                    true
+                }
+                else -> true
+            }
         }
         if (runCatching { wm.addView(v, lp) }.isSuccess) tailView = v
     }
@@ -1269,7 +1316,9 @@ open class PetOverlayService : Service() {
         super.onConfigurationChanged(newConfig)
         if (edgeHidden != 0) {
             edgeHidden = 0
-            engine.silent = false
+            visible = true
+            container?.visibility = android.view.View.VISIBLE
+            if (::videoView.isInitialized) runCatching { videoView.resumePlay() }
             engine.noMove = curNoMove
             hideTail()
         }
