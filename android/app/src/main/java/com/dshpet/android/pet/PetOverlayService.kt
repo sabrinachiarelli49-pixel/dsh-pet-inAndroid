@@ -1209,6 +1209,19 @@ open class PetOverlayService : Service() {
         tailView = null
     }
 
+    /** 把窗口尺寸钉成指定像素，并立即重排 */
+    private fun applyPetSize(w: Int, h: Int) {
+        if (w <= 0 || h <= 0) return
+        if (engine.winW == w && engine.winH == h) return
+        engine.setWindowSize(w, h)
+        params?.let { lp ->
+            lp.width = w
+            lp.height = h
+            container?.let { c -> runCatching { wm.updateViewLayout(c, lp) } }
+        }
+        syncEngineScreenBounds()
+    }
+
     /** 直接落位：不走 moveWindow 的边界钳制（隐藏时需要允许负坐标） */
     private fun applyRawPosition(x: Int, y: Int) {
         val c = container ?: return
@@ -1242,14 +1255,13 @@ open class PetOverlayService : Service() {
             targetH = if (maxH > 0 && engine.winH > maxH) maxH else engine.winH
         }
         if (targetW > 0 && targetH > 0) {
-            engine.setWindowSize(targetW, targetH)
-            params?.let { lp ->
-                lp.width = targetW
-                lp.height = targetH
-                container?.let { c -> runCatching { wm.updateViewLayout(c, lp) } }
-            }
             lastWinW = targetW
             lastWinH = targetH
+            applyPetSize(targetW, targetH)
+            // App 可能在转屏后自己又按新屏幕重算一次尺寸，这里隔几个时间点再压回去
+            for (delay in longArrayOf(300L, 900L, 1800L)) {
+                uiHandler.postDelayed({ applyPetSize(lastWinW, lastWinH) }, delay)
+            }
         }
         val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
         val y = engine.winY.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
