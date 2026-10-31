@@ -76,7 +76,7 @@ import kotlinx.coroutines.launch
 class PetChatWindow(private val ctx: Context) {
 
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private var view: ComposeView? = null
+    private var view: View? = null
     private var lp: WindowManager.LayoutParams? = null
     private var startW = 0
     private var startH = 0
