@@ -1262,10 +1262,17 @@ open class PetOverlayService : Service() {
                     if (!moved) {
                         restoreFromEdge()
                     } else {
-                        // 拖离边缘一定距离后，直接退出隐藏状态
-                        val gap = 80
-                        val farFromEdge = lp.x > gap && lp.x < (sw - targetW - gap)
-                        if (farFromEdge) {
+                        val edgeGap = 8
+                        val atLeft = lp.x <= edgeGap
+                        val atRight = lp.x + targetW >= sw - edgeGap
+                        if (atLeft || atRight) {
+                            // 拖到另一侧边缘：立即切换成那一侧的隐藏状态
+                            edgeHidden = if (atLeft) 1 else 2
+                            v.scaleX = if (atLeft) -1f else 1f
+                            lp.x = if (atLeft) 0 else (sw - targetW).coerceAtLeast(0)
+                            runCatching { wm.updateViewLayout(v, lp) }
+                        } else {
+                            // 只要脱离屏幕边缘，就退出隐藏状态
                             val px = lp.x.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
                             val py = lp.y.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
                             restoreFromEdge()
