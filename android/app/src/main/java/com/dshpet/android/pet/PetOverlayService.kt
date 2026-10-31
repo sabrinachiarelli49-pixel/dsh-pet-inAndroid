@@ -1167,10 +1167,11 @@ open class PetOverlayService : Service() {
         val v = android.widget.ImageView(this).apply {
             setImageResource(R.drawable.peek_whale)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            if (side == 2) scaleX = -1f
+            if (side == 1) scaleX = -1f
             setOnClickListener { restoreFromEdge() }
         }
-        val targetH = (300 * density).toInt().coerceAtLeast(120)
+        // 尺寸跟随桌宠当前大小（窗口高度的 1.05 倍）
+        val targetH = (engine.winH * 1.05f).toInt().coerceAtLeast(96)
         val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
         android.graphics.BitmapFactory.decodeResource(resources, R.drawable.peek_whale, opts)
         val ratio = if (opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight else 0.5f
