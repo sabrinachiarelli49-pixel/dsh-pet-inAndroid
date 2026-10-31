@@ -541,7 +541,7 @@ open class PetOverlayService : Service() {
         val max = curSelfTalkMaxSec.coerceAtLeast(min)
         val delay = (min + kotlin.random.Random.nextDouble() * (max - min)) * 1000
         val r = Runnable {
-            showRandomSelfTalk()
+            if (edgeHidden == 0) showRandomSelfTalk()
             scheduleSelfTalk()
         }
         selfTalkRunnable = r
@@ -1117,12 +1117,10 @@ open class PetOverlayService : Service() {
     // ================================================================ 左右侧隐藏
     /** 0=正常；1=贴左隐藏；2=贴右隐藏 */
     private var edgeHidden = 0
-    /** 隐藏时露在外面的比例（只露脑袋） */
+    /** 隐藏时露在外面的比例 */
     private val edgePeekRatio = 0.26f
-    /** 探头循环 */
-    private var peekJob: Job? = null
 
-    /** 拖到「三分之一进入屏幕边」松手才隐藏 */
+    /** 拖到「三分之一进入屏幕边」松手才隐藏；隐藏是瞬时切换，不做动画 */
     private fun tryEdgeHide() {
         if (curLock || edgeHidden != 0) return
         val (sw, _) = screenPx()
@@ -1135,78 +1133,28 @@ open class PetOverlayService : Service() {
             else -> 0
         }
         if (side == 0) return
-        val visible = (w * edgePeekRatio).toInt().coerceAtLeast(36)
+        val visible = (w * edgePeekRatio).toInt().coerceAtLeast(36).coerceAtMost(w)
         val targetX = if (side == 1) -(w - visible) else sw - visible
         engine.cancelMove()
         edgeHidden = side
+        // 静默：不自动换动作、不移动
+        engine.silent = true
         engine.noMove = true
-        // 面朝屏幕外，露出来的那块就是探出的脑袋
         engine.setFacing(if (side == 2) "right" else "left")
-        slideTo(targetX) {
-            runCatching { engine.switch("东张西望") }
-            startPeekLoop(targetX)
-        }
+        applyRawPosition(targetX, engine.winY)
         savePosition()
     }
 
-    /** 点一下露出的脑袋，滑回屏幕内 */
+    /** 点一下露出的部分，回到屏幕内 */
     private fun restoreFromEdge() {
         if (edgeHidden == 0) return
-        peekJob?.cancel()
-        peekJob = null
         val (sw, _) = screenPx()
         val target = if (edgeHidden == 1) 0 else (sw - engine.winW).coerceAtLeast(0)
-        engine.noMove = curNoMove
         edgeHidden = 0
-        slideTo(target)
+        engine.silent = false
+        engine.noMove = curNoMove
+        applyRawPosition(target, engine.winY)
         savePosition()
-    }
-
-    /** 隐藏后每隔 2.2 秒探头一次（探出 26px 再缩回去） */
-    private fun startPeekLoop(baseX: Int) {
-        peekJob?.cancel()
-        peekJob = scope.launch(Dispatchers.Main) {
-            while (edgeHidden != 0) {
-                kotlinx.coroutines.delay(2200L)
-                if (edgeHidden == 0) break
-                val dir = if (edgeHidden == 1) 1 else -1
-                animateX(baseX, baseX + dir * 26, 200)
-                animateX(baseX + dir * 26, baseX, 200)
-            }
-        }
-    }
-
-    private suspend fun animateX(from: Int, to: Int, durationMs: Int) {
-        val steps = (durationMs / 16).coerceAtLeast(2)
-        for (i in 1..steps) {
-            if (edgeHidden == 0) return
-            val t = i.toFloat() / steps
-            val eased = 1f - (1f - t) * (1f - t)
-            applyRawPosition((from + (to - from) * eased).toInt(), engine.winY)
-            kotlinx.coroutines.delay(16L)
-        }
-        if (edgeHidden != 0) applyRawPosition(to, engine.winY)
-    }
-
-    /** 平滑滑到目标 x（ease-out） */
-    private fun slideTo(targetX: Int, durationMs: Int = 260, onDone: (() -> Unit)? = null) {
-        val startX = engine.winX
-        if (startX == targetX) {
-            applyRawPosition(targetX, engine.winY)
-            onDone?.invoke()
-            return
-        }
-        val steps = (durationMs / 16).coerceAtLeast(2)
-        scope.launch(Dispatchers.Main) {
-            for (i in 1..steps) {
-                val t = i.toFloat() / steps
-                val eased = 1f - (1f - t) * (1f - t)
-                applyRawPosition((startX + (targetX - startX) * eased).toInt(), engine.winY)
-                kotlinx.coroutines.delay(16L)
-            }
-            applyRawPosition(targetX, engine.winY)
-            onDone?.invoke()
-        }
     }
 
     /** 直接落位：不走 moveWindow 的边界钳制（隐藏时需要允许负坐标） */
@@ -1221,6 +1169,21 @@ open class PetOverlayService : Service() {
             it.x = x.toDouble(); it.y = y.toDouble()
             it.w = engine.winW; it.h = engine.winH
         }
+    }
+
+    /** 转屏后复位隐藏状态，避免窗口卡在屏幕外 */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (edgeHidden != 0) {
+            edgeHidden = 0
+            engine.silent = false
+            engine.noMove = curNoMove
+        }
+        val (sw, sh) = screenPx()
+        val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
+        val y = engine.winY.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
+        applyRawPosition(x, y)
+        syncEngineScreenBounds()
     }
 
     // ================================================================ 位置持久化

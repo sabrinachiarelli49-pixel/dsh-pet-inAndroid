@@ -33,6 +33,8 @@ class PetEngine(
 
     /** 是否禁用自动移动（"不移动"） */
     var noMove = false
+    /** 静默：贴边隐藏时不自动换动作、不移动（画面停住） */
+    var silent = false
     var animationGapSeconds = 0.0
     var playbackSpeed = 1.0
 
@@ -150,6 +152,7 @@ class PetEngine(
     // ============================== 动画链 ==============================
 
     private fun pickNext() {
+        if (silent) return
         if (acts.isEmpty()) {
             idles.firstOrNull()?.let { if (it != anim) switch(it) }
             return
