@@ -1245,28 +1245,28 @@ open class PetOverlayService : Service() {
             engine.noMove = curNoMove
             hideTail()
         }
-        val (sw, sh) = screenPx()
-        // 转屏后按上次设定的像素尺寸还原：横竖屏视觉大小保持一致
-        var targetW = lastWinW
-        var targetH = lastWinH
-        if (targetW <= 0 || targetH <= 0) {
-            val maxH = (minOf(sw, sh) * 0.55f).toInt()
-            targetW = engine.winW
-            targetH = if (maxH > 0 && engine.winH > maxH) maxH else engine.winH
+        // App 的规则是「窗口宽度 = 屏幕宽度 × 42%」，横屏屏幕变宽就整只变大。
+        // 这里改成按屏幕「短边」算，横竖屏得到相同像素尺寸。
+        fun resizeToShortSide() {
+            val (sw, sh) = screenPx()
+            val shortSide = minOf(sw, sh)
+            if (shortSide <= 0) return
+            val dpW = 640.0 * curScale * density
+            val w = minOf(dpW.toInt(), (shortSide * 0.42f).toInt()).coerceAtLeast(120)
+            val h = (w * 9.0 / 16.0).toInt().coerceAtLeast(64)
+            lastWinW = w
+            lastWinH = h
+            applyPetSize(w, h)
+            val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
+            val y = engine.winY.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
+            applyRawPosition(x, y)
+            syncEngineScreenBounds()
         }
-        if (targetW > 0 && targetH > 0) {
-            lastWinW = targetW
-            lastWinH = targetH
-            applyPetSize(targetW, targetH)
-            // App 可能在转屏后自己又按新屏幕重算一次尺寸，这里隔几个时间点再压回去
-            for (delay in longArrayOf(300L, 900L, 1800L)) {
-                uiHandler.postDelayed({ applyPetSize(lastWinW, lastWinH) }, delay)
-            }
+        resizeToShortSide()
+        // App 转屏后可能再算一次，多个时间点压回去
+        for (delay in longArrayOf(300L, 900L, 1800L, 3000L)) {
+            uiHandler.postDelayed({ resizeToShortSide() }, delay)
         }
-        val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
-        val y = engine.winY.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
-        applyRawPosition(x, y)
-        syncEngineScreenBounds()
     }
 
     // ================================================================ 位置持久化
