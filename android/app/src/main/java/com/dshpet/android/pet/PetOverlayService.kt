@@ -1200,10 +1200,17 @@ open class PetOverlayService : Service() {
             targetW, targetH,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            // 允许画进状态栏/挖孔区域，否则系统会把探头往右推
+            if (Build.VERSION.SDK_INT >= 28) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
             // 让身体被屏幕边缘切掉一点，看起来是躲在屏幕外面探头
             // 约三分之一藏在屏幕外，看起来像从边缘探出半个身子
             // 贴在真正的屏幕边界上（与系统侧边栏同一条线）
