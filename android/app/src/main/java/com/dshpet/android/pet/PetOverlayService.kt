@@ -144,6 +144,9 @@ open class PetOverlayService : Service() {
     // ---- 运行时设置快照（协程监听 DataStore 更新）----
     private var density = 1f
     private var curScale = 0.72
+    /** 最近一次设定的窗口像素尺寸（转屏后按它还原，保证横竖屏一样大） */
+    private var lastWinW = 0
+    private var lastWinH = 0
     private var curOpacity = 100
     internal var curSpeed = PetConfig.DEFAULT_PLAYBACK_SPEED
     private var curNoMove = false
@@ -908,6 +911,8 @@ open class PetOverlayService : Service() {
                 lp.width = ww
                 lp.height = wh
                 runCatching { wm.updateViewLayout(c, lp) }
+                lastWinW = engine.winW
+                lastWinH = engine.winH
                 // 改大小原地生效：保留当前坐标，不再跳回右下角
                 engine.setPosition(engine.winX, engine.winY)
                 syncEngineScreenBounds()
@@ -1228,18 +1233,23 @@ open class PetOverlayService : Service() {
             hideTail()
         }
         val (sw, sh) = screenPx()
-        // 横屏时窗口按 dp 算会超出屏幕，先按可用高度收一收
-        // 以短边为基准，保证横竖屏看起来一样大（不再按横屏高度压缩）
-        val maxH = (minOf(sw, sh) * 0.55f).toInt()
-        if (maxH > 0 && engine.winH > maxH) {
-            val k = maxH.toFloat() / engine.winH
-            val nw = (engine.winW * k).toInt().coerceAtLeast(64)
-            engine.setWindowSize(nw, maxH)
+        // 转屏后按上次设定的像素尺寸还原：横竖屏视觉大小保持一致
+        var targetW = lastWinW
+        var targetH = lastWinH
+        if (targetW <= 0 || targetH <= 0) {
+            val maxH = (minOf(sw, sh) * 0.55f).toInt()
+            targetW = engine.winW
+            targetH = if (maxH > 0 && engine.winH > maxH) maxH else engine.winH
+        }
+        if (targetW > 0 && targetH > 0) {
+            engine.setWindowSize(targetW, targetH)
             params?.let { lp ->
-                lp.width = nw
-                lp.height = maxH
+                lp.width = targetW
+                lp.height = targetH
                 container?.let { c -> runCatching { wm.updateViewLayout(c, lp) } }
             }
+            lastWinW = targetW
+            lastWinH = targetH
         }
         val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
         val y = engine.winY.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
