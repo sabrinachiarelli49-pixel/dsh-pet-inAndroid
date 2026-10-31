@@ -1165,7 +1165,7 @@ open class PetOverlayService : Service() {
     private fun showTail(side: Int) {
         hideTail()
         val v = android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.whale_cutout)
+            setImageResource(R.drawable.ic_launcher_foreground)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             alpha = 0.92f
             setOnClickListener { restoreFromEdge() }
