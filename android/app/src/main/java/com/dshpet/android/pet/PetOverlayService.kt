@@ -878,6 +878,7 @@ open class PetOverlayService : Service() {
             val speed = hypot(r.vx, r.vy)
             if (PetEngine.isAtRest(r.py, r.vx, r.vy, bottom, r.bounced, speed)) {
                 physMode = null
+                tryEdgeHide()
                 savePosition()
             }
         }
@@ -1143,6 +1144,7 @@ open class PetOverlayService : Service() {
         // 探头小动作：慢慢滑出去 + 播一段张望
         slideTo(targetX)
         runCatching { engine.switch("东张西望") }
+        reportEdge("收起")
         savePosition()
     }
 
@@ -1154,7 +1156,18 @@ open class PetOverlayService : Service() {
         edgeHidden = 0
         engine.noMove = curNoMove
         slideTo(target)
+        reportEdge("恢复")
         savePosition()
+    }
+
+    /** 收起/恢复后冒泡报一下真实窗口坐标（排查用） */
+    private fun reportEdge(action: String) {
+        uiHandler.postDelayed({
+            val loc = IntArray(2)
+            runCatching { container?.getLocationOnScreen(loc) }
+            val w = engine.winW
+            showBubble("$action 实际x=${loc[0]} 宽=$w", 2500)
+        }, 400)
     }
 
     /** 平滑滑到目标 x（约 220ms，ease-out） */
