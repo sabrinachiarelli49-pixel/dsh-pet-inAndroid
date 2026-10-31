@@ -1277,12 +1277,6 @@ open class PetOverlayService : Service() {
             uiHandler.postDelayed({ recalcLockedSize() }, delay)
         }
     }
-        resizeToShortSide()
-        // App 转屏后可能再算一次，多个时间点压回去
-        for (delay in longArrayOf(300L, 900L, 1800L, 3000L)) {
-            uiHandler.postDelayed({ resizeToShortSide() }, delay)
-        }
-    }
 
     // ================================================================ 位置持久化
     private fun savePosition() {
