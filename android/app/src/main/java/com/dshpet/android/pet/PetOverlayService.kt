@@ -1145,10 +1145,10 @@ open class PetOverlayService : Service() {
         val (sw, _) = screenPx()
         val w = engine.winW
         if (w <= 0 || sw <= 0) return
-        val out = minOf(w / 3, sw / 4)
+        // 窗口一旦贴住屏幕边缘就触发隐藏（拖动时允许越界，所以很好触发）
         val side = when {
-            engine.winX <= -out -> 1
-            engine.winX + w >= sw + out -> 2
+            engine.winX <= 6 -> 1
+            engine.winX + w >= sw - 6 -> 2
             else -> 0
         }
         if (side == 0) return
