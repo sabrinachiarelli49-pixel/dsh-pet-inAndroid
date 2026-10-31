@@ -1171,7 +1171,7 @@ open class PetOverlayService : Service() {
             setOnClickListener { restoreFromEdge() }
         }
         // 尺寸跟随桌宠当前大小（窗口高度的 1.05 倍）
-        val targetH = (engine.winH * 1.05f).toInt().coerceAtLeast(96)
+        val targetH = (engine.winH * 0.85f).toInt().coerceAtLeast(96)
         val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
         android.graphics.BitmapFactory.decodeResource(resources, R.drawable.peek_whale, opts)
         val ratio = if (opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight else 0.5f
