@@ -163,6 +163,8 @@ class PetMenu(
         val cfg = PetConfig.get(ctx)
         // 菜单缩放（设置-外观可调 0.7x..1.4x，紧凑布局默认即小菜单）
         val menuScale by cfg.flowDouble("menu_scale", 1.0).collectAsState(initial = 1.0)
+        // 菜单里显示“当前大小”用设置值本身，别拿窗口像素反推（横屏必错）
+        val petScale by cfg.flowDouble("scale", 0.72).collectAsState(initial = 0.72)
         val scaleF = menuScale.toFloat()
         var speedOpen by remember { mutableStateOf(false) }
         var sizeOpen by remember { mutableStateOf(false) }
@@ -253,7 +255,7 @@ class PetMenu(
                     MenuItem(Icons.Filled.PlayArrow, "动画集", badge = "91 段") { animHubOpen = true }
                     MenuItem(Icons.Filled.Refresh, "播放速度", badge = "${service.curSpeed}×") { speedOpen = true }
                     SpeedSubmenu(speedOpen, cfg) { v -> run { cfg.setPlaybackSpeed(v) } }
-                    MenuItem(Icons.Filled.Home, "大小", badge = sizeLabel(engine.winW / 640.0)) { sizeOpen = true }
+                    MenuItem(Icons.Filled.Home, "大小", badge = sizeLabel(petScale)) { sizeOpen = true }
                     SizeSubmenu(sizeOpen, cfg) { v -> run { cfg.setScale(v) } }
                     // ---- 功能 ----
                     MenuGroup("功能")

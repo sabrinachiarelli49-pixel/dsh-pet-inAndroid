@@ -1188,7 +1188,11 @@ open class PetOverlayService : Service() {
             gravity = Gravity.TOP or Gravity.START
             // 让身体被屏幕边缘切掉一点，看起来是躲在屏幕外面探头
             // 约三分之一藏在屏幕外，看起来像从边缘探出半个身子
-            x = if (side == 1) -(targetW * 0.34f).toInt() else sw - (targetW * 0.66f).toInt()
+            // 左侧要避开前置摄像头的挖孔，不然探头会被挡住
+            val cutLeft = if (Build.VERSION.SDK_INT >= 29) {
+                runCatching { wm.defaultDisplay.cutout?.safeInsetLeft ?: 0 }.getOrDefault(0)
+            } else 0
+            x = if (side == 1) cutLeft - (targetW * 0.34f).toInt() else sw - (targetW * 0.66f).toInt()
             y = (engine.winY + engine.winH / 2 - targetH / 2)
                 .coerceIn(0, (sh - targetH).coerceAtLeast(0))
         }
@@ -1225,7 +1229,8 @@ open class PetOverlayService : Service() {
         }
         val (sw, sh) = screenPx()
         // 横屏时窗口按 dp 算会超出屏幕，先按可用高度收一收
-        val maxH = (sh * 0.42f).toInt()
+        // 以短边为基准，保证横竖屏看起来一样大（不再按横屏高度压缩）
+        val maxH = (minOf(sw, sh) * 0.55f).toInt()
         if (maxH > 0 && engine.winH > maxH) {
             val k = maxH.toFloat() / engine.winH
             val nw = (engine.winW * k).toInt().coerceAtLeast(64)
