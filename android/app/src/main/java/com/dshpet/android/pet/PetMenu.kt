@@ -255,7 +255,7 @@ class PetMenu(
                     MenuItem(Icons.Filled.PlayArrow, "动画集", badge = "91 段") { animHubOpen = true }
                     MenuItem(Icons.Filled.Refresh, "播放速度", badge = "${service.curSpeed}×") { speedOpen = true }
                     SpeedSubmenu(speedOpen, cfg) { v -> run { cfg.setPlaybackSpeed(v) } }
-                    MenuItem(Icons.Filled.Home, "大小", badge = sizeLabel(petScale)) { sizeOpen = true }
+                    MenuItem(Icons.Filled.Home, "大小", badge = sizeLabel(petScale) + " · " + engine.winW + "×" + engine.winH) { sizeOpen = true }
                     SizeSubmenu(sizeOpen, cfg) { v -> run { cfg.setScale(v) } }
                     // ---- 功能 ----
                     MenuGroup("功能")
