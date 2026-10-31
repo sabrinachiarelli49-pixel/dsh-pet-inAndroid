@@ -925,6 +925,7 @@ open class PetOverlayService : Service() {
                 runCatching { wm.updateViewLayout(c, lp) }
                 lastWinW = engine.winW
                 lastWinH = engine.winH
+                recalcLockedSize()
                 // 改大小原地生效：保留当前坐标，不再跳回右下角
                 engine.setPosition(engine.winX, engine.winY)
                 syncEngineScreenBounds()
@@ -1205,11 +1206,8 @@ open class PetOverlayService : Service() {
             gravity = Gravity.TOP or Gravity.START
             // 让身体被屏幕边缘切掉一点，看起来是躲在屏幕外面探头
             // 约三分之一藏在屏幕外，看起来像从边缘探出半个身子
-            // 左侧要避开前置摄像头的挖孔，不然探头会被挡住
-            val cutLeft = if (Build.VERSION.SDK_INT >= 29) {
-                runCatching { wm.defaultDisplay.cutout?.safeInsetLeft ?: 0 }.getOrDefault(0)
-            } else 0
-            x = if (side == 1) cutLeft - (targetW * 0.34f).toInt() else sw - (targetW * 0.66f).toInt()
+            // 贴在真正的屏幕边界上（与系统侧边栏同一条线）
+            x = if (side == 1) -(targetW * 0.62f).toInt() else sw - (targetW * 0.38f).toInt()
             y = (engine.winY + engine.winH / 2 - targetH / 2)
                 .coerceIn(0, (sh - targetH).coerceAtLeast(0))
         }
@@ -1219,6 +1217,14 @@ open class PetOverlayService : Service() {
     private fun hideTail() {
         tailView?.let { runCatching { wm.removeView(it) } }
         tailView = null
+    }
+
+    /** 按当前大小设置重新计算锁定尺寸（横竖屏都按屏幕短边算） */
+    private fun recalcLockedSize() {
+        val (w, h) = windowSizePx()
+        lockW = w
+        lockH = h
+        applyPetSize(w, h)
     }
 
     /** 把窗口尺寸钉成指定像素，并立即重排 */
@@ -1260,25 +1266,17 @@ open class PetOverlayService : Service() {
             engine.noMove = curNoMove
             hideTail()
         }
-        // App 的规则是「窗口宽度 = 屏幕宽度 × 42%」，横屏屏幕变宽就整只变大。
-        // 这里改成按屏幕「短边」算，横竖屏得到相同像素尺寸。
-        fun resizeToShortSide() {
-            val (sw, sh) = screenPx()
-            val shortSide = minOf(sw, sh)
-            if (shortSide <= 0) return
-            val dpW = 640.0 * curScale * density
-            val w = minOf(dpW.toInt(), (shortSide * 0.42f).toInt()).coerceAtLeast(120)
-            val h = (w * 9.0 / 16.0).toInt().coerceAtLeast(64)
-            lastWinW = w
-            lastWinH = h
-            lockW = w
-            lockH = h
-            applyPetSize(w, h)
-            val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
-            val y = engine.winY.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
-            applyRawPosition(x, y)
-            syncEngineScreenBounds()
+        // 尺寸按屏幕短边算，横竖屏同一像素；App 之后若再改，由布局监听强制回写
+        recalcLockedSize()
+        val (sw, sh) = screenPx()
+        val x = engine.winX.coerceIn(0, (sw - engine.winW).coerceAtLeast(0))
+        val y = engine.winY.coerceIn(0, (sh - engine.winH).coerceAtLeast(0))
+        applyRawPosition(x, y)
+        syncEngineScreenBounds()
+        for (delay in longArrayOf(300L, 900L, 1800L, 3000L)) {
+            uiHandler.postDelayed({ recalcLockedSize() }, delay)
         }
+    }
         resizeToShortSide()
         // App 转屏后可能再算一次，多个时间点压回去
         for (delay in longArrayOf(300L, 900L, 1800L, 3000L)) {
@@ -1362,9 +1360,10 @@ open class PetOverlayService : Service() {
     /** 桌宠窗口物理像素尺寸：按屏幕宽度比例（scale=0.72 → 42% 屏宽），
      *  与设备 density 无关，异常大密度设备也不会溢出。 */
     private fun windowSizePx(): Pair<Int, Int> {
-        val (sw, _) = screenPx()
+        val (sw, sh) = screenPx()
+        val base = minOf(sw, sh)
         val frac = 0.42 * curScale / 0.72
-        val w = (sw * frac).toInt().coerceIn(160, sw * 92 / 100)
+        val w = (base * frac).toInt().coerceIn(160, base * 92 / 100)
         val h = w * 9 / 16
         return w to h
     }
