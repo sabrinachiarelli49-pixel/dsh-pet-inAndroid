@@ -1170,7 +1170,7 @@ open class PetOverlayService : Service() {
             if (side == 2) scaleX = -1f
             setOnClickListener { restoreFromEdge() }
         }
-        val targetH = (260 * density).toInt().coerceAtLeast(120)
+        val targetH = (300 * density).toInt().coerceAtLeast(120)
         val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
         android.graphics.BitmapFactory.decodeResource(resources, R.drawable.peek_whale, opts)
         val ratio = if (opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight else 0.5f
@@ -1185,7 +1185,8 @@ open class PetOverlayService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             // 让身体被屏幕边缘切掉一点，看起来是躲在屏幕外面探头
-            x = if (side == 1) -(targetW * 0.10f).toInt() else sw - (targetW * 0.90f).toInt()
+            // 约三分之一藏在屏幕外，看起来像从边缘探出半个身子
+            x = if (side == 1) -(targetW * 0.34f).toInt() else sw - (targetW * 0.66f).toInt()
             y = (engine.winY + engine.winH / 2 - targetH / 2)
                 .coerceIn(0, (sh - targetH).coerceAtLeast(0))
         }
